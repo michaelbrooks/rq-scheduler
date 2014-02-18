@@ -15,6 +15,11 @@ from redis import WatchError
 
 logger = logging.getLogger(__name__)
 
+def seconds_since_epoch(dt=None):
+    if not dt:
+        dt = datetime.now()
+    return (dt - datetime(1970,1,1)).total_seconds()
+
 
 class Scheduler(object):
     scheduler_key = 'rq:scheduler'
@@ -105,7 +110,7 @@ class Scheduler(object):
         """
         job = self._create_job(func, args=args, kwargs=kwargs)
         self.connection._zadd(self.scheduled_jobs_key,
-                              int(scheduled_time.strftime('%s')),
+                              int(seconds_since_epoch(scheduled_time)),
                               job.id)
         return job
 
@@ -117,7 +122,7 @@ class Scheduler(object):
         """
         job = self._create_job(func, args=args, kwargs=kwargs)
         self.connection._zadd(self.scheduled_jobs_key,
-                              int((datetime.now() + time_delta).strftime('%s')),
+                              int(seconds_since_epoch(datetime.now() + time_delta)),
                               job.id)
         return job
 
@@ -151,7 +156,7 @@ class Scheduler(object):
             job.timeout = timeout
         job.save()
         self.connection._zadd(self.scheduled_jobs_key,
-                              int(scheduled_time.strftime('%s')),
+                              int(seconds_since_epoch(scheduled_time)),
                               job.id)
         return job
 
@@ -196,7 +201,7 @@ class Scheduler(object):
                     pipe.watch(self.scheduled_jobs_key)
                     if pipe.zscore(self.scheduled_jobs_key, job.id) is None:
                         raise ValueError('Job not in scheduled jobs queue')
-                    pipe.zadd(self.scheduled_jobs_key, int(date_time.strftime('%s')), job.id)
+                    pipe.zadd(self.scheduled_jobs_key, int(seconds_since_epoch(date_time)), job.id)
                     break
                 except WatchError:
                     # If job is still in the queue, retry otherwise job is already executed
@@ -220,9 +225,9 @@ class Scheduler(object):
         if until is None:
             until = "+inf"
         elif isinstance(until, datetime):
-            until = until.strftime('%s')
+            until = seconds_since_epoch(until)
         elif isinstance(until, timedelta):
-            until = (datetime.now() + until).strftime('%s')
+            until = seconds_since_epoch(datetime.now() + until)
         job_ids = self.connection.zrangebyscore(self.scheduled_jobs_key, 0,
                                                 until, withscores=with_times,
                                                 score_cast_func=epoch_to_datetime)
@@ -249,7 +254,7 @@ class Scheduler(object):
         If with_times is True a list of tuples consisting of the job instance and
         it's scheduled execution time is returned.
         """
-        return self.get_jobs(int(time.strftime('%s')), with_times=with_times)
+        return self.get_jobs(int(seconds_since_epoch()), with_times=with_times)
 
     def get_queue_for_job(self, job):
         """
@@ -284,7 +289,7 @@ class Scheduler(object):
                 if job.meta['repeat'] == 0:
                     return
             self.connection._zadd(self.scheduled_jobs_key,
-                                  int(datetime.now().strftime('%s')) + int(interval),
+                                  int(seconds_since_epoch()) + int(interval),
                                   job.id)
 
     def enqueue_jobs(self):
